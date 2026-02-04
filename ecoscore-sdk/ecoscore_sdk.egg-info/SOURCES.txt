@@ -1,0 +1,9 @@
+README.md
+setup.py
+ecoscore/__init__.py
+ecoscore/client.py
+ecoscore_sdk.egg-info/PKG-INFO
+ecoscore_sdk.egg-info/SOURCES.txt
+ecoscore_sdk.egg-info/dependency_links.txt
+ecoscore_sdk.egg-info/requires.txt
+ecoscore_sdk.egg-info/top_level.txt
