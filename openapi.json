@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Product Sustainability & Impact Assessment API",
-    "description": "Assess product sustainability and environmental impact (CO2, water) for e-commerce and AI agents. Returns explainable, structured scores.",
-    "version": "1.0.0"
+    "description": "Assess product sustainability and environmental impact (CO2, water) for e-commerce and AI agents. Returns explainable, structured scores with human-readable explanations.",
+    "version": "1.2.0"
   },
   "paths": {
     "/v1/methodology": {
@@ -28,7 +28,7 @@
     "/v1/assess-impact": {
       "post": {
         "summary": "Assess product sustainability and impact",
-        "description": "Submit product details (name, material composition, weight, origin and destination countries) to receive a structured sustainability score, CO2 estimate, water usage, breakdown, CBAM relevance, and limitations. Rate limited per API key.",
+        "description": "Submit product details to receive an enterprise-grade response: score, confidence_level, CO2, explainable breakdown, CBAM analysis, and human-readable explanations. Rate limited per API key.",
         "operationId": "post_assess_impact_v1_assess_impact_post",
         "requestBody": {
           "content": {
@@ -46,7 +46,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AssessImpactResponse"
+                  "$ref": "#/components/schemas/ImpactAssessmentResponse"
                 }
               }
             }
@@ -67,6 +67,56 @@
             "APIKeyHeader": []
           }
         ]
+      }
+    },
+    "/demo/score": {
+      "get": {
+        "tags": [
+          "Demo"
+        ],
+        "summary": "Demo: See a perfect score example",
+        "description": "Returns a hardcoded, high-scoring example so users can instantly see what the API is capable of—no API key required.",
+        "operationId": "demo_score_demo_score_get",
+        "parameters": [
+          {
+            "name": "product_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Product Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImpactAssessmentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/health": {
@@ -97,7 +147,7 @@
           "product_name": {
             "type": "string",
             "title": "Product Name",
-            "description": "Human-readable name of the product (e.g. 'Organic Cotton T-Shirt'). Used for labeling in responses."
+            "description": "Human-readable name of the product (e.g. 'Organic Cotton T-Shirt'). Echoed in response."
           },
           "material_composition": {
             "additionalProperties": {
@@ -122,6 +172,12 @@
             "type": "string",
             "title": "Destination Country",
             "description": "ISO-style country code or name where the product is delivered (e.g. 'US', 'Germany'). Affects logistics emissions."
+          },
+          "shipping_mode": {
+            "type": "string",
+            "title": "Shipping Mode",
+            "description": "Shipping mode: 'sea', 'air', 'road', or 'rail'. Affects CO2 calculation with circuitry factors and mode multipliers.",
+            "default": "sea"
           }
         },
         "type": "object",
@@ -135,86 +191,26 @@
         "title": "AssessImpactRequest",
         "description": "Request body for the impact assessment endpoint."
       },
-      "AssessImpactResponse": {
+      "CbamAnalysis": {
         "properties": {
-          "total_sustainability_score": {
-            "type": "number",
-            "maximum": 100.0,
-            "minimum": 0.0,
-            "title": "Total Sustainability Score",
-            "description": "Overall sustainability score from 0 to 100. Higher is better. Weighted combination of materials, logistics, and weight."
-          },
-          "co2_estimate_kg": {
-            "type": "number",
-            "minimum": 0.0,
-            "title": "Co2 Estimate Kg",
-            "description": "Estimated CO2 equivalent in kg for materials and logistics. Indicative, not certified."
-          },
-          "water_usage_liters": {
-            "type": "number",
-            "minimum": 0.0,
-            "title": "Water Usage Liters",
-            "description": "Estimated water usage in liters (mainly from material production). Indicative."
-          },
-          "breakdown": {
-            "$ref": "#/components/schemas/Breakdown",
-            "description": "Per-dimension scores: material_score, logistics_score, weight_impact. Use for explainability."
-          },
-          "methodology_version": {
-            "type": "string",
-            "title": "Methodology Version",
-            "description": "Version of the calculation methodology. Use to track changes and build trust; 'indicative' means estimates, not certified LCA.",
-            "default": "1.0.0-indicative"
-          },
-          "cbam_relevant": {
+          "is_relevant": {
             "type": "boolean",
-            "title": "Cbam Relevant",
-            "description": "True if the product contains CBAM-relevant materials (e.g. steel, aluminum, fertilizer). Indicates potential relevance for EU Carbon Border Adjustment Mechanism reporting; not for final regulatory use.",
-            "default": false
+            "title": "Is Relevant",
+            "description": "True if the product contains CBAM-relevant materials (steel, aluminum, cement, fertilizer, hydrogen, iron)."
           },
-          "limitations": {
+          "reason": {
             "type": "string",
-            "title": "Limitations",
-            "description": "Short disclaimer for agents: model-based, internal assessment only, not for final regulatory CBAM filings."
+            "title": "Reason",
+            "description": "Short explanation: either which materials triggered CBAM relevance or that none were found."
           }
         },
         "type": "object",
         "required": [
-          "total_sustainability_score",
-          "co2_estimate_kg",
-          "water_usage_liters",
-          "breakdown",
-          "limitations"
+          "is_relevant",
+          "reason"
         ],
-        "title": "AssessImpactResponse",
-        "description": "Explainable, structured response for AI agents and e-commerce integrations."
-      },
-      "Breakdown": {
-        "properties": {
-          "material_score": {
-            "type": "number",
-            "title": "Material Score",
-            "description": "Sustainability score for materials only (0–100). Higher = lower impact materials."
-          },
-          "logistics_score": {
-            "type": "number",
-            "title": "Logistics Score",
-            "description": "Sustainability score for shipping from origin to destination (0–100). Higher = lower logistics impact."
-          },
-          "weight_impact": {
-            "type": "number",
-            "title": "Weight Impact",
-            "description": "Contribution of product weight to overall impact (0–100). Heavier products reduce this score."
-          }
-        },
-        "type": "object",
-        "required": [
-          "material_score",
-          "logistics_score",
-          "weight_impact"
-        ],
-        "title": "Breakdown",
-        "description": "Per-dimension scores and impacts for explainability."
+        "title": "CbamAnalysis",
+        "description": "CBAM relevance and human-readable reason for regulatory awareness."
       },
       "HTTPValidationError": {
         "properties": {
@@ -229,13 +225,106 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "ImpactAssessmentResponse": {
+        "properties": {
+          "product_name": {
+            "type": "string",
+            "title": "Product Name",
+            "description": "Product name as submitted; echoed for context."
+          },
+          "total_sustainability_score": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Total Sustainability Score",
+            "description": "Overall sustainability score from 0 to 100. Higher is better. Score = 0.5*Material + 0.3*Logistics + 0.2*Weight."
+          },
+          "confidence_level": {
+            "type": "string",
+            "title": "Confidence Level",
+            "description": "Confidence in the estimate (e.g. low, medium, high). Currently medium for model-based estimates.",
+            "default": "medium"
+          },
+          "co2_estimate_kg": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Co2 Estimate Kg",
+            "description": "Estimated CO2 equivalent in kg for materials and logistics. Indicative, not certified."
+          },
+          "breakdown": {
+            "$ref": "#/components/schemas/ImpactBreakdown",
+            "description": "Per-dimension scores so agents can explain e.g. 'The score is low because logistics_score is low.'"
+          },
+          "cbam_analysis": {
+            "$ref": "#/components/schemas/CbamAnalysis",
+            "description": "Whether the product is CBAM-relevant and why; key for European enterprise buyers."
+          },
+          "explanation": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Explanation",
+            "description": "Human-readable explanations for the score. AI agents can surface these to users to explain why the score is high or low."
+          },
+          "methodology_version": {
+            "type": "string",
+            "title": "Methodology Version",
+            "description": "Version of the calculation methodology. Use to track changes and build trust.",
+            "default": "v1.2.0"
+          },
+          "disclaimer": {
+            "type": "string",
+            "title": "Disclaimer",
+            "description": "Legal disclaimer: indicative model-based estimate; not for regulatory CBAM filings."
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_name",
+          "total_sustainability_score",
+          "co2_estimate_kg",
+          "breakdown",
+          "cbam_analysis",
+          "disclaimer"
+        ],
+        "title": "ImpactAssessmentResponse",
+        "description": "Enterprise-grade, nested, explainable response for AI agents and e-commerce."
+      },
+      "ImpactBreakdown": {
+        "properties": {
+          "material_score": {
+            "type": "number",
+            "title": "Material Score",
+            "description": "Sustainability score for materials only (0–100). Higher = lower impact materials."
+          },
+          "logistics_score": {
+            "type": "number",
+            "title": "Logistics Score",
+            "description": "Sustainability score for shipping from origin to destination (0–100). Higher = lower logistics impact."
+          },
+          "weight_penalty": {
+            "type": "number",
+            "title": "Weight Penalty",
+            "description": "Penalty from product weight; heavier products add to this. Used in total score calculation."
+          }
+        },
+        "type": "object",
+        "required": [
+          "material_score",
+          "logistics_score",
+          "weight_penalty"
+        ],
+        "title": "ImpactBreakdown",
+        "description": "Per-dimension scores so agents can explain why a score is low or high."
+      },
       "MethodologyResponse": {
         "properties": {
           "methodology_version": {
             "type": "string",
             "title": "Methodology Version",
             "description": "Current methodology version used by the API.",
-            "default": "1.0.0-indicative"
+            "default": "v1.2.0"
           },
           "description": {
             "type": "string",
@@ -264,7 +353,7 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Breakdown",
-            "description": "How material_score, logistics_score, and weight_impact are derived."
+            "description": "How material_score, logistics_score, and weight_penalty are derived."
           },
           "disclaimer": {
             "type": "string",
@@ -282,7 +371,7 @@
           "disclaimer"
         ],
         "title": "MethodologyResponse",
-        "description": "JSON explanation of how scores and estimates are calculated (for transparency and trust)."
+        "description": "Static JSON explaining how scores are calculated (for transparency and trust)."
       },
       "ValidationError": {
         "properties": {

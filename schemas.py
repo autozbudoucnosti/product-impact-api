@@ -1,6 +1,6 @@
 """
 Pydantic v2 schemas for the Product Sustainability & Impact Assessment API.
-All models include 'description' fields for AI agent and developer readability.
+Enterprise-grade, nested, and explainable for AI agents.
 """
 
 from pydantic import BaseModel, Field
@@ -14,7 +14,7 @@ class AssessImpactRequest(BaseModel):
 
     product_name: str = Field(
         ...,
-        description="Human-readable name of the product (e.g. 'Organic Cotton T-Shirt'). Used for labeling in responses.",
+        description="Human-readable name of the product (e.g. 'Organic Cotton T-Shirt'). Echoed in response.",
     )
     material_composition: dict[str, float] = Field(
         ...,
@@ -33,13 +33,17 @@ class AssessImpactRequest(BaseModel):
         ...,
         description="ISO-style country code or name where the product is delivered (e.g. 'US', 'Germany'). Affects logistics emissions.",
     )
+    shipping_mode: str = Field(
+        "sea",
+        description="Shipping mode: 'sea', 'air', 'road', or 'rail'. Affects CO2 calculation with circuitry factors and mode multipliers.",
+    )
 
 
-# ----- Response: breakdown -----
+# ----- Response: breakdown (explainable for AI agents) -----
 
 
-class Breakdown(BaseModel):
-    """Per-dimension scores and impacts for explainability."""
+class ImpactBreakdown(BaseModel):
+    """Per-dimension scores so agents can explain why a score is low or high."""
 
     material_score: float = Field(
         ...,
@@ -49,60 +53,88 @@ class Breakdown(BaseModel):
         ...,
         description="Sustainability score for shipping from origin to destination (0–100). Higher = lower logistics impact.",
     )
-    weight_impact: float = Field(
+    weight_penalty: float = Field(
         ...,
-        description="Contribution of product weight to overall impact (0–100). Heavier products reduce this score.",
+        description="Penalty from product weight; heavier products add to this. Used in total score calculation.",
     )
 
 
-# ----- Response: main -----
+# ----- Response: CBAM analysis (enterprise trigger for EU buyers) -----
 
 
-class AssessImpactResponse(BaseModel):
-    """Explainable, structured response for AI agents and e-commerce integrations."""
+class CbamAnalysis(BaseModel):
+    """CBAM relevance and human-readable reason for regulatory awareness."""
 
+    is_relevant: bool = Field(
+        ...,
+        description="True if the product contains CBAM-relevant materials (steel, aluminum, cement, fertilizer, hydrogen, iron).",
+    )
+    reason: str = Field(
+        ...,
+        description="Short explanation: either which materials triggered CBAM relevance or that none were found.",
+    )
+
+
+# ----- Response: main (enterprise nested structure) -----
+
+
+class ImpactAssessmentResponse(BaseModel):
+    """Enterprise-grade, nested, explainable response for AI agents and e-commerce."""
+
+    product_name: str = Field(
+        ...,
+        description="Product name as submitted; echoed for context.",
+    )
     total_sustainability_score: float = Field(
         ...,
         ge=0,
         le=100,
-        description="Overall sustainability score from 0 to 100. Higher is better. Weighted combination of materials, logistics, and weight.",
+        description="Overall sustainability score from 0 to 100. Higher is better. Score = 0.5*Material + 0.3*Logistics + 0.2*Weight.",
+    )
+    confidence_level: str = Field(
+        "medium",
+        description="Confidence in the estimate (e.g. low, medium, high). Currently medium for model-based estimates.",
     )
     co2_estimate_kg: float = Field(
         ...,
         ge=0,
         description="Estimated CO2 equivalent in kg for materials and logistics. Indicative, not certified.",
     )
-    water_usage_liters: float = Field(
+    breakdown: ImpactBreakdown = Field(
         ...,
-        ge=0,
-        description="Estimated water usage in liters (mainly from material production). Indicative.",
+        description="Per-dimension scores so agents can explain e.g. 'The score is low because logistics_score is low.'",
     )
-    breakdown: Breakdown = Field(
+    cbam_analysis: CbamAnalysis = Field(
         ...,
-        description="Per-dimension scores: material_score, logistics_score, weight_impact. Use for explainability.",
+        description="Whether the product is CBAM-relevant and why; key for European enterprise buyers.",
+    )
+    explanation: list[str] = Field(
+        default_factory=list,
+        description="Human-readable explanations for the score. AI agents can surface these to users to explain why the score is high or low.",
     )
     methodology_version: str = Field(
-        "1.0.0-indicative",
-        description="Version of the calculation methodology. Use to track changes and build trust; 'indicative' means estimates, not certified LCA.",
+        "v1.2.0",
+        description="Version of the calculation methodology. Use to track changes and build trust.",
     )
-    cbam_relevant: bool = Field(
-        False,
-        description="True if the product contains CBAM-relevant materials (e.g. steel, aluminum, fertilizer). Indicates potential relevance for EU Carbon Border Adjustment Mechanism reporting; not for final regulatory use.",
-    )
-    limitations: str = Field(
+    disclaimer: str = Field(
         ...,
-        description="Short disclaimer for agents: model-based, internal assessment only, not for final regulatory CBAM filings.",
+        description="Legal disclaimer: indicative model-based estimate; not for regulatory CBAM filings.",
     )
+
+
+# Backward compatibility
+AssessImpactResponse = ImpactAssessmentResponse
+Breakdown = ImpactBreakdown
 
 
 # ----- Methodology response -----
 
 
 class MethodologyResponse(BaseModel):
-    """JSON explanation of how scores and estimates are calculated (for transparency and trust)."""
+    """Static JSON explaining how scores are calculated (for transparency and trust)."""
 
     methodology_version: str = Field(
-        "1.0.0-indicative",
+        "v1.2.0",
         description="Current methodology version used by the API.",
     )
     description: str = Field(
@@ -123,7 +155,7 @@ class MethodologyResponse(BaseModel):
     )
     breakdown: dict = Field(
         ...,
-        description="How material_score, logistics_score, and weight_impact are derived.",
+        description="How material_score, logistics_score, and weight_penalty are derived.",
     )
     disclaimer: str = Field(
         ...,

@@ -25,7 +25,10 @@ MATERIAL_CO2_KG_PER_KG: dict[str, float] = {
     "rubber": 2.8,
     "steel": 1.85,
     "aluminum": 11.5,
+    "cement": 0.85,
     "fertilizer": 2.1,
+    "hydrogen": 10.0,
+    "iron": 1.9,
     "default": 5.8,
 }
 
@@ -46,7 +49,10 @@ MATERIAL_WATER_LITERS_PER_KG: dict[str, float] = {
     "rubber": 1_900,
     "steel": 150,
     "aluminum": 1_200,
+    "cement": 50,
     "fertilizer": 200,
+    "hydrogen": 20,
+    "iron": 120,
     "default": 1_800,
 }
 
@@ -67,27 +73,46 @@ MATERIAL_SUSTAINABILITY_SCORE: dict[str, float] = {
     "rubber": 62,
     "steel": 55,
     "aluminum": 38,
+    "cement": 50,
     "fertilizer": 52,
+    "hydrogen": 45,
+    "iron": 52,
     "default": 52,
 }
 
 # CBAM-relevant materials (EU Carbon Border Adjustment Mechanism)
-CBAM_MATERIALS = frozenset({"steel", "aluminum", "fertilizer"})
+CBAM_MATERIALS = frozenset({"steel", "aluminum", "cement", "fertilizer", "hydrogen", "iron"})
+CBAM_MATERIALS_DISPLAY = "steel, aluminum, cement, fertilizer, hydrogen, or iron"
 
-# Logistics: kg CO2e per kg product per 1000 km (2026 indicative)
+# Logistics: kg CO2e per kg product per 1000 km (2026 indicative, base = sea freight)
 KG_CO2_PER_KG_PER_1000_KM = 0.58
 MAX_DISTANCE_KM = 20_000
 MIN_LOGISTICS_SCORE = 20
 MAX_LOGISTICS_SCORE = 95
 
+# Circuitry factors for real-world shipping routes (not straight lines)
+MODE_CIRCUITRY_FACTOR: dict[str, float] = {
+    "sea": 1.5,   # sea routes are ~50% longer than great circle
+    "road": 1.2,  # road routes are ~20% longer
+    "air": 1.0,   # air is close to great circle
+    "rail": 1.0,  # rail is close to great circle
+}
+
+# CO2 multipliers by mode (relative to sea freight baseline)
+MODE_CO2_MULTIPLIER: dict[str, float] = {
+    "sea": 1.0,
+    "road": 5.0,
+    "rail": 2.0,
+    "air": 50.0,  # air is ~50x more carbon intensive than sea
+}
+
 # Weight impact
 WEIGHT_PENALTY_PER_KG = 2.0
 WEIGHT_BASELINE_KG = 0.5
 
-# Agent-facing disclaimer
-LIMITATIONS_TEXT = (
-    "This estimate is model-based and intended for internal assessment, "
-    "not for final regulatory CBAM filings."
+# Enterprise disclaimer
+DISCLAIMER_TEXT = (
+    "Indicative model-based estimate; not for regulatory CBAM filings."
 )
 
 # Earth radius (km) for Great Circle Distance
@@ -195,15 +220,24 @@ def _distance_km(origin: str, destination: str) -> float:
     return 500.0 + float(h) % 14_500
 
 
-def is_cbam_relevant(composition: dict[str, float]) -> bool:
-    """True if any material in the composition is CBAM-relevant (steel, aluminum, fertilizer)."""
+def get_cbam_analysis(composition: dict[str, float]) -> dict:
+    """
+    CBAM relevance and reason for enterprise buyers.
+    Checks for steel, aluminum, cement, fertilizer, hydrogen, iron.
+    """
+    found: list[str] = []
     for material in composition:
         if composition.get(material, 0) <= 0:
             continue
         key = _normalize_material_key(material)
         if key in CBAM_MATERIALS:
-            return True
-    return False
+            found.append(material)
+    is_relevant = len(found) > 0
+    if is_relevant:
+        reason = f"Product contains CBAM-relevant material(s): {', '.join(found)}."
+    else:
+        reason = f"Materials do not contain {CBAM_MATERIALS_DISPLAY}."
+    return {"is_relevant": is_relevant, "reason": reason}
 
 
 def compute_material_co2_kg(composition: dict[str, float], weight_kg: float) -> float:
@@ -249,23 +283,43 @@ def compute_material_score(composition: dict[str, float]) -> float:
 
 
 def compute_logistics_co2_kg(
-    origin_country: str, destination_country: str, weight_kg: float
+    origin_country: str,
+    destination_country: str,
+    weight_kg: float,
+    mode: str = "sea",
 ) -> float:
-    """Logistics CO2 (kg CO2e) from Great Circle distance and weight."""
-    dist = min(_distance_km(origin_country, destination_country), MAX_DISTANCE_KM)
-    co2 = weight_kg * (dist / 1000.0) * KG_CO2_PER_KG_PER_1000_KM
+    """
+    Logistics CO2 (kg CO2e) from distance, weight, and shipping mode.
+    Applies circuitry factor for real-world routes (sea: 1.5x, road: 1.2x).
+    Applies CO2 multiplier by mode (air ~50x sea, road ~5x sea).
+    """
+    base_dist = _distance_km(origin_country, destination_country)
+    mode_lower = mode.strip().lower()
+    circuitry = MODE_CIRCUITRY_FACTOR.get(mode_lower, 1.0)
+    co2_mult = MODE_CO2_MULTIPLIER.get(mode_lower, 1.0)
+    effective_dist = min(base_dist * circuitry, MAX_DISTANCE_KM)
+    co2 = weight_kg * (effective_dist / 1000.0) * KG_CO2_PER_KG_PER_1000_KM * co2_mult
     return round(co2, 2)
 
 
 def compute_logistics_score(
-    origin_country: str, destination_country: str
+    origin_country: str,
+    destination_country: str,
+    mode: str = "sea",
 ) -> float:
-    """Logistics (shipping) sustainability score (0–100). Shorter distance = higher score."""
+    """
+    Logistics (shipping) sustainability score (0–100).
+    Shorter distance = higher score. Mode affects score via CO2 multiplier penalty.
+    """
     dist = _distance_km(origin_country, destination_country)
     if dist <= 0:
         return float(MAX_LOGISTICS_SCORE)
+    mode_lower = mode.strip().lower()
+    co2_mult = MODE_CO2_MULTIPLIER.get(mode_lower, 1.0)
+    # Penalize high-CO2 modes
+    mode_penalty = (co2_mult - 1.0) * 2.0  # e.g. air: (50-1)*2 = 98 penalty
     ratio = min(dist / 5000.0, 3.0)
-    score = MAX_LOGISTICS_SCORE - (ratio * 25.0)
+    score = MAX_LOGISTICS_SCORE - (ratio * 25.0) - min(mode_penalty, 50.0)
     return round(max(MIN_LOGISTICS_SCORE, score), 2)
 
 
@@ -278,45 +332,146 @@ def compute_weight_impact_score(weight_kg: float) -> float:
     return round(max(10.0, min(90.0, score)), 2)
 
 
+# ---------------------------------------------------------------------------
+# Explainability engine
+# ---------------------------------------------------------------------------
+
+# Material-specific explanations
+MATERIAL_EXPLANATIONS: dict[str, str] = {
+    "polyester": "Polyester is a synthetic material with high energy intensity.",
+    "nylon": "Nylon production is energy-intensive with significant CO2 emissions.",
+    "cotton": "Conventional cotton has high water usage (up to 10,000 L/kg).",
+    "organic_cotton": "Organic cotton uses less water and no synthetic pesticides.",
+    "recycled_polyester": "Recycled polyester reduces virgin plastic use by ~30%.",
+    "wool": "Wool production has high methane emissions from sheep.",
+    "leather": "Leather has very high CO2 due to cattle farming and tanning.",
+    "linen": "Linen (flax) is one of the most sustainable natural fibers.",
+    "hemp": "Hemp requires minimal water and no pesticides; highly sustainable.",
+    "bamboo": "Bamboo grows fast but processing can be chemical-intensive.",
+    "steel": "Steel production is carbon-intensive (CBAM-relevant).",
+    "aluminum": "Aluminum smelting is very energy-intensive (CBAM-relevant).",
+    "cement": "Cement is a major industrial CO2 source (CBAM-relevant).",
+    "iron": "Iron production involves high-temperature furnaces (CBAM-relevant).",
+}
+
+
+def generate_explanation(
+    material_composition: dict[str, float],
+    weight_kg: float,
+    distance_km: float,
+    mode: str,
+) -> list[str]:
+    """
+    Generate human-readable explanations for the sustainability score.
+    Returns a list of strings that AI agents can surface to users.
+    """
+    explanations: list[str] = []
+    mode_lower = mode.strip().lower()
+
+    # Material-specific explanations
+    for material, share in material_composition.items():
+        if share <= 0:
+            continue
+        key = _normalize_material_key(material)
+        if key in MATERIAL_EXPLANATIONS:
+            explanations.append(MATERIAL_EXPLANATIONS[key])
+
+    # Mode-based explanations
+    if mode_lower == "air":
+        explanations.append(
+            "Air freight penalty applied (approx 50x higher CO2 than sea freight)."
+        )
+    elif mode_lower == "road":
+        explanations.append(
+            "Road freight has ~5x higher CO2 than sea freight."
+        )
+    elif mode_lower == "sea":
+        explanations.append(
+            "Sea freight is the most carbon-efficient shipping mode."
+        )
+    elif mode_lower == "rail":
+        explanations.append(
+            "Rail freight is relatively efficient (~2x sea freight CO2)."
+        )
+
+    # Distance-based explanations
+    if distance_km > 10_000:
+        explanations.append(
+            "Very long-distance shipping (>10,000 km) substantially increases emissions."
+        )
+    elif distance_km > 5_000:
+        explanations.append(
+            "Long-distance shipping significantly increases the score."
+        )
+    elif distance_km < 500 and distance_km > 0:
+        explanations.append(
+            "Short shipping distance (<500 km) keeps logistics impact low."
+        )
+
+    # Weight-based explanations
+    if weight_kg > 5.0:
+        explanations.append(
+            f"Heavy product ({weight_kg:.1f} kg) adds significant weight penalty."
+        )
+    elif weight_kg < 0.3:
+        explanations.append(
+            "Lightweight product contributes to a better sustainability score."
+        )
+
+    return explanations
+
+
 def assess_impact(
     product_name: str,
     material_composition: dict[str, float],
     weight_kg: float,
     origin_country: str,
     destination_country: str,
+    shipping_mode: str = "sea",
 ) -> dict:
     """
-    Full assessment with 2026 indicative model.
-    Returns dict including cbam_relevant and limitations for agent use.
+    Full assessment with v1.2 indicative model.
+    Returns dict including breakdown, CBAM analysis, and human-readable explanation.
     Weights: material 50%, logistics 30%, weight 20%.
     """
+    mode = shipping_mode.strip().lower() if shipping_mode else "sea"
+
     material_score = compute_material_score(material_composition)
-    logistics_score = compute_logistics_score(origin_country, destination_country)
+    logistics_score = compute_logistics_score(origin_country, destination_country, mode)
     weight_impact = compute_weight_impact_score(weight_kg)
 
     co2_materials = compute_material_co2_kg(material_composition, weight_kg)
     co2_logistics = compute_logistics_co2_kg(
-        origin_country, destination_country, weight_kg
+        origin_country, destination_country, weight_kg, mode
     )
     co2_total = round(co2_materials + co2_logistics, 2)
-
-    water = compute_water_liters(material_composition, weight_kg)
 
     total_score = (
         0.50 * material_score + 0.30 * logistics_score + 0.20 * weight_impact
     )
     total_score = round(min(100.0, max(0.0, total_score)), 2)
+    weight_penalty = round(100.0 - weight_impact, 2)
+
+    # Compute distance for explanation
+    distance_km = _distance_km(origin_country, destination_country)
+
+    # Generate human-readable explanations
+    explanation = generate_explanation(
+        material_composition, weight_kg, distance_km, mode
+    )
 
     return {
+        "product_name": product_name,
         "total_sustainability_score": total_score,
+        "confidence_level": "medium",
         "co2_estimate_kg": co2_total,
-        "water_usage_liters": water,
         "breakdown": {
             "material_score": material_score,
             "logistics_score": logistics_score,
-            "weight_impact": weight_impact,
+            "weight_penalty": weight_penalty,
         },
-        "methodology_version": "1.0.0-indicative",
-        "cbam_relevant": is_cbam_relevant(material_composition),
-        "limitations": LIMITATIONS_TEXT,
+        "cbam_analysis": get_cbam_analysis(material_composition),
+        "explanation": explanation,
+        "methodology_version": "v1.2.0",
+        "disclaimer": DISCLAIMER_TEXT,
     }

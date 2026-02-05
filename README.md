@@ -1,5 +1,12 @@
 # Product Sustainability & Impact Assessment API
 
+## 🔑 Getting Started
+
+To use this client, you need an API Key.
+**[👉 Click here to get your Free API Key on RapidAPI](https://web-production-a1f91.up.railway.app)**
+
+---
+
 **Production-ready API for e-commerce developers and AI agents** to assess product sustainability and environmental impact. Returns explainable, structured scores (CO2, water, breakdown) suitable for storefronts, dashboards, and AI reasoning.
 
 ---

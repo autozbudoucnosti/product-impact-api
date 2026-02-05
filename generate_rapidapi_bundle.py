@@ -35,19 +35,23 @@ ASSESS_IMPACT_REQUEST_EXAMPLE = {
 
 ASSESS_IMPACT_RESPONSE_EXAMPLE = {
     "summary": "Eco-friendly T-shirt response",
-    "description": "Example response with sustainability score, CO2, water, breakdown, and CBAM flag.",
+    "description": "Enterprise response with score, confidence_level, breakdown, and cbam_analysis.",
     "value": {
+        "product_name": "Eco-friendly T-shirt",
         "total_sustainability_score": 72.4,
+        "confidence_level": "medium",
         "co2_estimate_kg": 1.89,
-        "water_usage_liters": 3285.0,
         "breakdown": {
             "material_score": 73.0,
             "logistics_score": 70.0,
-            "weight_impact": 90.0,
+            "weight_penalty": 10.0,
         },
-        "methodology_version": "1.0.0-indicative",
-        "cbam_relevant": False,
-        "limitations": "This estimate is model-based and intended for internal assessment, not for final regulatory CBAM filings.",
+        "cbam_analysis": {
+            "is_relevant": False,
+            "reason": "Materials do not contain steel, aluminum, cement, fertilizer, hydrogen, or iron.",
+        },
+        "methodology_version": "v1.2.0-beta",
+        "disclaimer": "Indicative model-based estimate; not for regulatory CBAM filings.",
     },
 }
 
