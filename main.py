@@ -6,6 +6,7 @@ Production-ready FastAPI app with API key auth, structured responses for AI agen
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Security
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
 from auth import validate_api_key
@@ -25,6 +26,14 @@ app = FastAPI(
     version="1.2.0",
     docs_url="/docs",
     redoc_url="/redoc",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 

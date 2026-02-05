@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EcoScore API | Deterministic Sustainability Data</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0f172a; color: #e2e8f0; font-family: sans-serif; }
+        .code-bg { background-color: #1e293b; }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen">
+
+    <nav class="p-6 flex justify-between items-center max-w-6xl mx-auto w-full">
+        <div class="font-bold text-xl text-green-400">EcoScore API</div>
+        <div>
+            <a href="https://rapidapi.com/autozbudoucnosti/api/sustainability-impact-assessment-api" target="_blank" class="bg-green-500 hover:bg-green-600 text-black font-bold py-2 px-4 rounded transition">Get API Key</a>
+        </div>
+    </nav>
+
+    <main class="flex-grow flex flex-col items-center justify-center text-center px-4 mt-10">
+        <h1 class="text-5xl font-extrabold text-white mb-6 tracking-tight">
+            Stop AI Hallucinations.<br>
+            <span class="text-green-400">Get Deterministic Eco-Scores.</span>
+        </h1>
+        <p class="text-lg text-slate-400 max-w-2xl mb-10">
+            A specialized API for AI Agents and E-commerce. Calculate Carbon Footprints (CO2), compliance risks, and logistics impact with mathematical precision.
+        </p>
+
+        <div class="w-full max-w-2xl bg-slate-800 rounded-xl border border-slate-700 shadow-2xl overflow-hidden p-6 mb-12 text-left">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="font-bold text-white flex items-center">
+                    <span class="w-3 h-3 bg-green-500 rounded-full mr-2"></span> Live Demo
+                </h3>
+                <span class="text-xs text-slate-500">GET /demo/score</span>
+            </div>
+            
+            <div class="flex gap-2 mb-4">
+                <input type="text" id="productInput" value="Bamboo T-Shirt" class="bg-slate-900 text-white border border-slate-600 rounded px-3 py-2 w-full focus:outline-none focus:border-green-500" placeholder="Product Name...">
+                <button onclick="runDemo()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded font-medium transition">Run Analysis</button>
+            </div>
+
+            <div class="code-bg rounded-lg p-4 font-mono text-sm h-64 overflow-y-auto text-green-300 border border-slate-700 relative">
+                <pre id="jsonOutput">// Click 'Run Analysis' to see the API response...</pre>
+                <div id="loading" class="hidden absolute inset-0 bg-slate-900/80 flex items-center justify-center">Processing...</div>
+            </div>
+        </div>
+
+        <div class="grid md:grid-cols-3 gap-6 max-w-6xl w-full mb-20 text-left">
+            <div class="p-6 border border-slate-700 rounded-lg hover:border-green-500 transition">
+                <h3 class="font-bold text-white text-lg mb-2">🤖 For AI Agents</h3>
+                <p class="text-slate-400 text-sm">Don't let LLMs guess carbon math. Give them a hard "explanation" field to cite in chat responses.</p>
+            </div>
+            <div class="p-6 border border-slate-700 rounded-lg hover:border-green-500 transition">
+                <h3 class="font-bold text-white text-lg mb-2">🛍️ For Shopify</h3>
+                <p class="text-slate-400 text-sm">Auto-generate "Eco-Badges" for products based on weight and material composition.</p>
+            </div>
+            <div class="p-6 border border-slate-700 rounded-lg hover:border-green-500 transition">
+                <h3 class="font-bold text-white text-lg mb-2">🚚 For Logistics</h3>
+                <p class="text-slate-400 text-sm">Includes "Circuitry Factors" to account for sea/road deviations (e.g., Suez Canal).</p>
+            </div>
+        </div>
+    </main>
+
+    <footer class="w-full py-6 text-center text-slate-600 text-sm border-t border-slate-800">
+        <p>Built with FastAPI & Pydantic. Hosted on Railway.</p>
+    </footer>
+
+    <script>
+        async function runDemo() {
+            const product = document.getElementById('productInput').value;
+            const output = document.getElementById('jsonOutput');
+            const loader = document.getElementById('loading');
+            
+            const apiUrl = `https://product-sustainability-api-production.up.railway.app/demo/score?product_name=${encodeURIComponent(product)}`;
+
+            loader.classList.remove('hidden');
+            output.textContent = "Fetching real-time data...";
+
+            try {
+                const response = await fetch(apiUrl);
+                const data = await response.json();
+                output.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                output.textContent = "Error connecting to API. \nMake sure 'CORSMiddleware' is added to main.py!";
+                console.error(error);
+            } finally {
+                loader.classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+</html>
