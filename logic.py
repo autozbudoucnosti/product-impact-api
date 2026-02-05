@@ -187,6 +187,50 @@ def _get_material_value(mapping: dict[str, float], key: str) -> float:
     return mapping.get(key, mapping["default"])
 
 
+def get_emission_factor(material: str) -> float:
+    """
+    Returns the CO2 emission factor (kg CO2e per kg material).
+    Data based on global textile averages.
+    """
+    material = material.lower().strip()
+    
+    # Emission factors dictionary
+    factors = {
+        "cotton": 1.5,
+        "organic cotton": 0.9,
+        "polyester": 6.4,
+        "recycled polyester": 3.5,
+        "nylon": 7.3,
+        "wool": 14.0,
+        "silk": 10.0,
+        "denim": 2.5,
+        "leather": 17.0,
+        "linen": 1.1,
+    }
+    
+    # Return factor or a default average (5.0) if unknown
+    return factors.get(material, 5.0)
+
+
+def calculate_logistics_impact(weight_kg: float, mode: str) -> float:
+    """
+    Calculates shipping emissions based on mode.
+    """
+    mode = mode.lower().strip()
+    
+    # Emission factors per kg (simplified global averages)
+    # Sea: ~0.01 kg CO2/kg, Air: ~0.60 kg CO2/kg, Truck: ~0.10 kg CO2/kg
+    transport_factors = {
+        "sea": 0.02,
+        "air": 0.85,
+        "truck": 0.15,
+        "rail": 0.05
+    }
+    
+    factor = transport_factors.get(mode, 0.10)  # Default to truck
+    return weight_kg * factor
+
+
 def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Great circle distance in km between two (lat, lon) points."""
     lat1, lon1, lat2, lon2 = (
