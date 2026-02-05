@@ -69,22 +69,47 @@
 
     <script>
         async function runDemo() {
-            const product = document.getElementById('productInput').value;
+            const input = document.getElementById('productInput');
             const output = document.getElementById('jsonOutput');
             const loader = document.getElementById('loading');
-            
-            const apiUrl = `https://product-sustainability-api-production.up.railway.app/demo/score?product_name=${encodeURIComponent(product)}`;
+            const productName = input.value;
 
+            if (!productName) return;
+
+            // Show loading state
             loader.classList.remove('hidden');
-            output.textContent = "Fetching real-time data...";
+            output.textContent = `Calculating impact for ${productName}...`;
 
             try {
-                const response = await fetch(apiUrl);
+                // 1. The CORRECT Working Railway URL
+                const response = await fetch('https://web-production-a1f91.up.railway.app/v1/assess-impact', {
+                    method: 'POST', // 2. We use POST now, not GET
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-API-Key': 'my-super-secret-password-678'  // API Key for authentication
+                    },
+                    // 3. We send the data structure your API expects
+                    body: JSON.stringify({
+                        product_name: productName,
+                        material_composition: { "cotton": 1.0 }, // Defaulting to cotton for the demo
+                        weight_kg: 1.0,
+                        shipping_mode: "sea",
+                        origin_country: "CN",
+                        destination_country: "US"
+                    })
+                });
+
+                if (!response.ok) throw new Error(`API Error: ${response.status}`);
+
                 const data = await response.json();
+
+                // 4. Display the REAL results from your API
                 output.textContent = JSON.stringify(data, null, 2);
+                
             } catch (error) {
-                output.textContent = "Error connecting to API. \nMake sure 'CORSMiddleware' is added to main.py!";
                 console.error(error);
+                output.textContent = `Error: Could not connect to API. (Check Console)\n${error.message}`;
             } finally {
                 loader.classList.add('hidden');
             }
